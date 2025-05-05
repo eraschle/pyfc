@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging
 import time
 from pathlib import Path
@@ -10,6 +11,9 @@ from pyfc.errors import IfcModelContextError
 # Import the new Enum
 from pyfc.models.ifc_types import IfcEntityType
 from pyfc.repository import IModelContext
+
+# Import utilities
+from . import utilities as ifc_utils
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +132,7 @@ class IosModelContext(IModelContext):
         try:
             # Use IfcEntityType for schema string? No, schema is specific to ios.file
             ifc_file = ios.file(schema=schema)  # pyright: ignore[reportArgumentType]
-            logger.info(
-                f"Successfully created new in-memory IFC model (Schema: {schema})"
-            )
+            logger.info(f"Successfully created new in-memory IFC model (Schema: {schema})")
             context = cls(ifc_file, None)
             context._setup_basic_project()  # Add basic project structure
             return context
@@ -163,26 +165,19 @@ class IosModelContext(IModelContext):
                 CoordinateSpaceDimension=3,
                 Precision=1e-5,
                 WorldCoordinateSystem=axis_placement,
-                # TrueNorth= # Optional IfcDirection
             )
             # Create units (example: SI units)
             # Use IfcEntityType for unit creation
             units = [
-                self.create_entity(
-                    IfcEntityType.SI_UNIT, UnitType="LENGTHUNIT", Name="METRE"
-                ),
-                self.create_entity(
-                    IfcEntityType.SI_UNIT, UnitType="AREAUNIT", Name="SQUARE_METRE"
-                ),
+                self.create_entity(IfcEntityType.SI_UNIT, UnitType="LENGTHUNIT", Name="METRE"),
+                self.create_entity(IfcEntityType.SI_UNIT, UnitType="AREAUNIT", Name="SQUARE_METRE"),
                 self.create_entity(
                     IfcEntityType.SI_UNIT, UnitType="VOLUMEUNIT", Name="CUBIC_METRE"
                 ),
-                self.create_entity(
-                    IfcEntityType.SI_UNIT, UnitType="PLANEANGLEUNIT", Name="RADIAN"
-                ),
+                self.create_entity(IfcEntityType.SI_UNIT, UnitType="PLANEANGLEUNIT", Name="RADIAN"),
             ]
             unit_assignment = self.create_entity(
-                IfcEntityType.UNIT_ASSIGNMENT, Units=units
+                IfcEntityType.UNIT_ASSIGNMENT, Units=ifc_utils.ensure_tuple(units)
             )
 
             # Create IfcProject using IfcEntityType
@@ -192,7 +187,7 @@ class IosModelContext(IModelContext):
                 OwnerHistory=owner_history,
                 Name="Default Project",
                 UnitsInContext=unit_assignment,
-                RepresentationContexts=[geom_context],
+                RepresentationContexts=ifc_utils.ensure_tuple([geom_context]),
             )
             # No need to mark modified here, create_entity does it
             logger.info("Basic IfcProject structure created.")
@@ -226,14 +221,12 @@ class IosModelContext(IModelContext):
 
         try:
             self.ifc_model.write(str(target_path))
-            self._file_path = target_path  # Update path if saved successfully
-            self._is_modified = False  # Reset modified flag after saving
+            self._file_path = target_path
+            self._is_modified = False
             logger.info(f"Successfully saved IFC model to: {target_path}")
         except Exception as e:
             logger.error(f"Error saving IFC model to {target_path}: {e}")
-            raise IfcModelContextError(
-                f"Failed to save IFC model to {target_path}: {e}"
-            )
+            raise IfcModelContextError(f"Failed to save IFC model to {target_path}: {e}")
 
     def ifc_by_id(self, ifc_id: int) -> IfcEntity | None:
         """Get an IFC entity by its ID."""
@@ -314,9 +307,7 @@ class IosModelContext(IModelContext):
             logger.error(
                 f"Error creating entity of type {type_str} with args {log_args} and kwargs {log_kwargs}: {e}"
             )
-            raise IfcModelContextError(
-                f"Failed to create entity of type {type_str}: {e}"
-            )
+            raise IfcModelContextError(f"Failed to create entity of type {type_str}: {e}")
 
     def remove_entity(self, entity: IfcEntity) -> bool:
         """
@@ -348,8 +339,8 @@ class IosModelContext(IModelContext):
         # ifcopenshell file objects don't have an explicit close method
         # Just log and clear reference
         logger.info(f"Closing IosModelContext. Path: {self._file_path}")
-        # self.ifc_model = None # Optional: clear reference
-        self._is_modified = False  # Reset flag on close
+        self._ifc_model = None
+        self._is_modified = False
 
     def mark_modified(self) -> bool:
         """Marks the context as modified."""
@@ -428,9 +419,7 @@ class IosModelContext(IModelContext):
             organization = (
                 orgs[0]
                 if orgs
-                else self.create_entity(
-                    IfcEntityType.ORGANIZATION, Name="Not Specified"
-                )
+                else self.create_entity(IfcEntityType.ORGANIZATION, Name="Not Specified")
             )
 
             persons_orgs = self.ifc_by_type(IfcEntityType.PERSON_AND_ORGANIZATION)
@@ -482,9 +471,7 @@ class IosModelContext(IModelContext):
                 ChangeAction="ADDED",  # Or other IfcChangeActionEnum
                 CreationDate=creation_timestamp,
             )
-            logger.debug(
-                f"Created default IfcOwnerHistory: #{self._owner_history.id()}"
-            )
+            logger.debug(f"Created default IfcOwnerHistory: #{self._owner_history.id()}")
             # No need to call self.mark_modified() here as create_entity already does
             return self._owner_history
 
@@ -505,9 +492,7 @@ class IosModelContext(IModelContext):
                 f"Exception: {exc_val} at {exc_tb}"
             )
         elif self.is_modified:
-            logger.warning(
-                f"Exiting context with unsaved modifications. Path: {self._file_path}"
-            )
+            logger.warning(f"Exiting context with unsaved modifications. Path: {self._file_path}")
             # Decide if auto-save on successful exit is desired
             # self.save() # Example: uncomment to auto-save
 

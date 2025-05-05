@@ -53,7 +53,7 @@ class IModelContext(Protocol):
 
         Parameters
         ----------
-        filepath : Optional[str | Path]
+        filepath : str | Path | None
             The path to save the IFC file to. If None, the original filepath is used.
 
         Raises

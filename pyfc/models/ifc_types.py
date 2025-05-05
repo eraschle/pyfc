@@ -7,28 +7,28 @@ class IfcEntityType(StrEnum):
 
     # General
     PROJECT = "IfcProject"
-    OWNER_HISTORY = "IfcOwnerHistory"  # Added
-    APPLICATION = "IfcApplication"  # Added
-    PERSON = "IfcPerson"  # Added
-    ORGANIZATION = "IfcOrganization"  # Added
-    PERSON_AND_ORGANIZATION = "IfcPersonAndOrganization"  # Added
+    OWNER_HISTORY = "IfcOwnerHistory"
+    APPLICATION = "IfcApplication"
+    PERSON = "IfcPerson"
+    ORGANIZATION = "IfcOrganization"
+    PERSON_AND_ORGANIZATION = "IfcPersonAndOrganization"
     SI_UNIT = "IfcSIUnit"
     CONVERSION_BASED_UNIT = "IfcConversionBasedUnit"
     DERIVED_UNIT = "IfcDerivedUnit"
     CONTEXT_DEPENDENT_UNIT = "IfcContextDependentUnit"
     UNIT_ASSIGNMENT = "IfcUnitAssignment"
     GEOMETRIC_REPRESENTATION_CONTEXT = "IfcGeometricRepresentationContext"
-    CARTESIAN_POINT = "IfcCartesianPoint"  # Added
-    AXIS2_PLACEMENT_3D = "IfcAxis2Placement3D"  # Added
-    SITE = "IfcSite"  # Example Spatial Structure
-    BUILDING = "IfcBuilding"  # Example Spatial Structure
+    CARTESIAN_POINT = "IfcCartesianPoint"
+    AXIS2_PLACEMENT_3D = "IfcAxis2Placement3D"
+    SITE = "IfcSite"
+    BUILDING = "IfcBuilding"
 
     # Objects & Types
     OBJECT = "IfcObject"
-    OBJECT_TYPE = "IfcObjectType"  # Base class for types
-    TYPE_OBJECT = "IfcTypeObject"  # Base class for types (alternative name)
-    WALL = "IfcWall"  # Example Object
-    WALL_TYPE = "IfcWallType"  # Example Object Type
+    OBJECT_TYPE = "IfcObjectType"
+    TYPE_OBJECT = "IfcTypeObject"
+    WALL = "IfcWall"
+    WALL_TYPE = "IfcWallType"
 
     # Properties & Quantities
     PROPERTY = "IfcProperty"

@@ -6,7 +6,7 @@ if TYPE_CHECKING:
         IfcProperty,
         IfcPSet,
         IfcValue,
-        Property,
+        Property,  # Added for type hint
     )
 from .base import IBaseAdapter
 
@@ -28,44 +28,6 @@ class IPSetAdapter(IBaseAdapter["IfcPSet"], Protocol):
         """
         ...
 
-    def add_property(self, pset_id: int, prop: "Property") -> "IfcProperty":
-        """
-        Adds a property to the given property set.
-
-        Parameters
-        ----------
-        pset_id : int
-            The ID of the property set to add the property to.
-        prop : Property
-            The property to add to the property set.
-
-        Returns
-        -------
-        IfcProperty
-            The added property.
-        """
-        ...
-
-    def remove_property(self, pset_id: int, prop_name: str) -> bool:
-        """
-        Removes a property from the given property set.
-
-        This function does not delete the property and all relations to it.
-
-        Parameters
-        ----------
-        pset_id : int
-            The ID of the property set to add the property to.
-        prop_name : str
-            The name of the property to remove.
-
-        Returns
-        -------
-        bool
-            True if the property was removed successfully, False otherwise.
-        """
-        ...
-
     def get_objects_of(self, pset_id: int) -> list["IfcObject"]:
         """
         Returns a list of elements associated with the given property set.
@@ -77,8 +39,68 @@ class IPSetAdapter(IBaseAdapter["IfcPSet"], Protocol):
 
         Returns
         -------
-        list[IfcElement]
+        list[IfcObject]
             A list of elements associated with the property set.
+        """
+        ...
+
+    def add_property_to_pset(self, pset_id: int, prop: "Property") -> "IfcProperty | None":
+        """
+        Adds a new IfcProperty (e.g., IfcPropertySingleValue) to the *specific*
+        IfcPropertySet entity identified by pset_id.
+
+        This method operates directly on the target PSet. It creates the necessary
+        IfcProperty entity and its associated IFC value entity based on the provided
+        Property data object, then adds the new IfcProperty to the 'HasProperties'
+        attribute of the IfcPropertySet.
+
+        If a property with the same name (`prop.name`) already exists within this
+        specific PSet (`pset_id`), the behavior might vary by implementation (e.g.,
+        raise error, return None, or update - returning None or raising Error is
+        recommended to enforce explicit update logic elsewhere if needed).
+
+        Parameters
+        ----------
+        pset_id : int
+            The IFC ID of the specific IfcPropertySet entity to modify.
+        prop : Property
+            The Property data object containing the name and IfcValue for the
+            new property to be created and added.
+
+        Returns
+        -------
+        IfcProperty | None
+            The model representation of the *newly created* IfcProperty entity,
+            or None if the operation failed (e.g., property name conflict, invalid input).
+        """
+        ...
+
+    def remove_property_from_pset(self, pset_id: int, prop_name: str) -> bool:
+        """
+        Removes an IfcProperty from the *specific* IfcPropertySet entity identified
+        by pset_id, based on the property name.
+
+        This method finds the IfcProperty entity with the given `prop_name` within
+        the 'HasProperties' attribute of the target IfcPropertySet and removes it
+        from that collection.
+
+        Important: This removes the property from the PSet's list. The IfcProperty
+        entity itself (and potentially its associated value entity) will likely be
+        deleted by the underlying IFC library if it's no longer referenced (which
+        it shouldn't be after removal from the PSet).
+
+        Parameters
+        ----------
+        pset_id : int
+            The IFC ID of the specific IfcPropertySet entity to modify.
+        prop_name : str
+            The name of the IfcProperty to remove from this PSet.
+
+        Returns
+        -------
+        bool
+            True if the property was found within the PSet and successfully removed,
+            False otherwise (e.g., no property with that name existed in the specified PSet).
         """
         ...
 
@@ -94,7 +116,7 @@ class IPropertyAdapter(IBaseAdapter["IfcProperty"], Protocol):
             The ID of the property to retrieve property sets for.
         Returns
         -------
-        Any | None
+        list[IfcPSet]
             A list of property sets that contain the property.
         """
         ...
@@ -119,8 +141,6 @@ class IPropertyAdapter(IBaseAdapter["IfcProperty"], Protocol):
         """
         Sets the value of the property using the provided IfcValue object.
 
-        The adapter implementation is responsible for interpreting the IfcValue
-        and creating/updating the appropriate IFC entities (value, unit, property).
         Parameters
         ----------
         property_id : int

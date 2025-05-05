@@ -120,17 +120,18 @@ class IfcUnitType(Enum):
     """
 
     UNKNOWN = (None, None, False)
-    COUNT = (None, None, False)  # Typically unitless but treated as a type
+    NONE = (None, None, False)
+    COUNT = (None, None, False)
     LENGTH = ("LENGTHUNIT", "METRE", True)
     AREA = ("AREAUNIT", "SQUARE_METRE", True)
     VOLUME = ("VOLUMEUNIT", "CUBIC_METRE", True)
-    MASS = ("MASSUNIT", "GRAM", True)  # Base is GRAM, KILOGRAM name handled separately
+    MASS = ("MASSUNIT", "GRAM", True)
     TIME = ("TIMEUNIT", "SECOND", True)
     TEMPERATURE = (
         "THERMODYNAMICTEMPERATUREUNIT",
         "KELVIN",
         True,
-    )  # Note: No space in IFC enum
+    )
     PRESSURE = ("PRESSUREUNIT", "PASCAL", True)
     ENERGY = ("ENERGYUNIT", "JOULE", True)
     POWER = ("POWERUNIT", "WATT", True)
@@ -218,6 +219,7 @@ class IfcValue:
         # Reset prefix if unit is UNKNOWN or COUNT
         if self.prefix != IfcPrefix.NONE and self.unit_type in (
             IfcUnitType.UNKNOWN,
+            IfcUnitType.NONE,
             IfcUnitType.COUNT,
         ):
             object.__setattr__(self, "prefix", IfcPrefix.NONE)
@@ -230,18 +232,9 @@ class IfcValue:
         expected_type_str = ""
 
         # Check physical units expecting REAL
-        if self.unit_type in (
-            IfcUnitType.LENGTH,
-            IfcUnitType.AREA,
-            IfcUnitType.VOLUME,
-            IfcUnitType.MASS,
-            IfcUnitType.TIME,
-            IfcUnitType.TEMPERATURE,
-            IfcUnitType.PRESSURE,
-            IfcUnitType.ENERGY,
-            IfcUnitType.POWER,
-            IfcUnitType.PLANEANGLE,
-        ):
+        if self.unit_type == IfcUnitType.NONE and self.value_type == IfcValueType.TEXT:
+            mismatch = False
+        elif self.unit_type.is_si:
             if self.value_type != IfcValueType.REAL:
                 mismatch = True
                 expected_type_str = IfcValueType.REAL.value
@@ -273,6 +266,37 @@ class IfcValue:
 
 
 # --- Factory ---
+
+
+def _is_boolean(value_type: IfcValueType) -> bool:
+    """Check if the value is string-like (str or bytes)."""
+    return value_type in (
+        IfcValueType.BOOLEAN,
+        IfcValueType.LOGICAL,
+    )
+
+
+def _is_string_like(value_type: IfcValueType) -> bool:
+    """Check if the value is string-like (str or bytes)."""
+    return value_type in (
+        IfcValueType.TEXT,
+        IfcValueType.LABEL,
+        IfcValueType.IDENTIFIER,
+    )
+
+
+def _is_int_value_type(value_type: IfcValueType, unit_type: IfcUnitType) -> bool:
+    """Check if the value is string-like (str or bytes)."""
+    if unit_type.is_si:
+        return False
+    return value_type == IfcValueType.INTEGER
+
+
+def _is_float_value_type(value_type: IfcValueType, unit_type: IfcUnitType) -> bool:
+    """Check if the value is string-like (str or bytes)."""
+    if unit_type.is_si:
+        return True
+    return value_type == IfcValueType.REAL
 
 
 class ValueFactory:
@@ -339,7 +363,7 @@ class ValueFactory:
                     resolved_unit_type = IfcUnitType.from_ifc_unit_enum(unit_type)
             # elif unit_type is not None:
             #     raise ValueError(f"Invalid unit_type input: {unit_type}")
-            resolved_unit_type = resolved_unit_type or IfcUnitType.UNKNOWN  # Default to UNKNOWN
+            resolved_unit_type = resolved_unit_type or IfcUnitType.UNKNOWN
 
             # Resolve Prefix (accepts enum, IFC prefix string, None, or "")
             if isinstance(prefix, IfcPrefix):
@@ -355,33 +379,42 @@ class ValueFactory:
             raise ValueError(f"Invalid type string provided: {e}") from e
 
         # --- Infer value type if not provided ---
-        inferred_value_type = resolved_value_type or IfcValueType.from_python_type(value)
+        inferred_value_type = IfcValueType.from_python_type(value)
 
         # --- Type Conversion & Validation ---
         original_value = value  # Keep original for logging if conversion fails
         try:
-            if inferred_value_type == IfcValueType.INTEGER:
+            if _is_int_value_type(inferred_value_type, resolved_unit_type):
+                resolved_value_type = IfcValueType.INTEGER
                 value = int(value)
-            elif inferred_value_type == IfcValueType.REAL:
+            elif _is_float_value_type(inferred_value_type, resolved_unit_type):
+                resolved_value_type = IfcValueType.REAL
                 value = float(value)
-            elif (
-                inferred_value_type == IfcValueType.BOOLEAN
-                or inferred_value_type == IfcValueType.LOGICAL
-            ):
-                # Allow flexible boolean conversion
+            elif _is_boolean(inferred_value_type):
                 bool_val = convert.as_bool(value)
                 if bool_val is None:
                     raise ValueError("Not a valid boolean representation")
                 value = bool_val
+                resolved_value_type = IfcValueType.LOGICAL
+                resolved_unit_type = IfcUnitType.NONE
+                resolved_prefix = IfcPrefix.NONE
                 # Standardize on LOGICAL if boolean-like? Or keep BOOLEAN if explicitly requested?
                 # Let's keep the inferred/requested type for now.
-            elif inferred_value_type in (
-                IfcValueType.TEXT,
-                IfcValueType.LABEL,
-                IfcValueType.IDENTIFIER,
-            ):
+            elif _is_string_like(inferred_value_type):
                 value = str(value)
+                resolved_value_type = IfcValueType.TEXT
+                resolved_unit_type = IfcUnitType.NONE
+                resolved_prefix = IfcPrefix.NONE
             # Add other conversions if needed (e.g., date/time)
+            else:
+                # No conversion needed, just ensure type is set correctly
+                logger.warning(
+                    f"Value '{value}' is neither int, float nor string like. "
+                    f"Using inferred type {inferred_value_type.value}."
+                )
+                resolved_value_type = inferred_value_type
+                resolved_unit_type = IfcUnitType.UNKNOWN
+                resolved_prefix = IfcPrefix.NONE
 
         except (ValueError, TypeError) as e:
             logger.error(
@@ -397,7 +430,7 @@ class ValueFactory:
         # Use the validated/converted value and resolved types
         return IfcValue(
             value=value,
-            value_type=inferred_value_type,
+            value_type=resolved_value_type,
             unit_type=resolved_unit_type,
             prefix=resolved_prefix,
         )
@@ -461,6 +494,3 @@ class ValueFactory:
     def create_bool(value: bool | str | int) -> IfcValue:  # Allow flexible input
         # Use LOGICAL as the standard boolean type from factory perspective
         return ValueFactory.create(value, IfcValueType.LOGICAL, IfcUnitType.UNKNOWN, IfcPrefix.NONE)
-
-
-value_factory = ValueFactory()

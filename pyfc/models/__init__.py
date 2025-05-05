@@ -9,27 +9,35 @@ from .properties import (
     IfcPSet,
     Property,
     PropertySet,
+    IPSetDefinition,
+    QuantitySet,
 )
 from .value import (
     IfcPrefix,
     IfcUnitType,
     IfcValue,
     IfcValueType,
-    value_factory,
+    ValueFactory,
+)
+from .ifc_types import (
+    IfcEntityType,
 )
 
 __all__ = [
     "ABaseModel",
+    "IfcEntityType",
     "IfcObject",
-    "IfcObjectType",
     "IfcObjectBase",
+    "IfcObjectType",
     "IfcPSet",
-    "IfcProperty",
-    "IfcValue",
     "IfcPrefix",
+    "IfcProperty",
     "IfcUnitType",
+    "IfcValue",
     "IfcValueType",
-    "value_factory",
     "Property",
     "PropertySet",
+    "ValueFactory",
+    "IPSetDefinition",
+    "QuantitySet",
 ]

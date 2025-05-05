@@ -1,5 +1,6 @@
+# pyfc/models/properties.py
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, List
 
 if TYPE_CHECKING:
     from pyfc.adapters import (
@@ -9,6 +10,8 @@ if TYPE_CHECKING:
 
 from dataclasses import dataclass
 
+from pyfc.validation.properties import validate_pset_definition
+
 from .base import ABaseModel
 from .objects import IfcObject
 from .value import (
@@ -16,7 +19,7 @@ from .value import (
     IfcUnitType,
     IfcValue,
     IfcValueType,
-    value_factory,
+    ValueFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,16 +119,12 @@ class IfcProperty(ABaseModel):
                 # if current_ifc_value:
                 #    ifc_value_to_set = value_factory.create(value, unit_type=current_ifc_value.unit_type, prefix=current_ifc_value.prefix)
                 # else:
-                ifc_value_to_set = value_factory.create(value)
+                ifc_value_to_set = ValueFactory.create(value)
             except ValueError as e:
-                logger.error(
-                    f"Failed to create IfcValue for property {self.ifc_id}: {e}"
-                )
+                logger.error(f"Failed to create IfcValue for property {self.ifc_id}: {e}")
                 return
 
-        logger.debug(
-            f"Requesting adapter to set value for P:{self.ifc_id} to {ifc_value_to_set}"
-        )
+        logger.debug(f"Requesting adapter to set value for P:{self.ifc_id} to {ifc_value_to_set}")
         self._adapter.set_value(self.ifc_id, ifc_value_to_set)
 
 
@@ -157,47 +156,86 @@ class IfcPSet(ABaseModel):
         """
         return self._adapter.get_properties(self.ifc_id)
 
-    def prop_by_name(self, prop_name: str) -> IfcProperty | None:
-        for prop in self.properties:
-            if prop.name != prop_name:
-                continue
-            return prop
-        return None
-
-    def add_property(self, prop: Property) -> "IfcProperty":
+    def get_property(self, prop_name: str) -> "IfcProperty | None":
         """
-        Adds a property to the property set.
-
-        Creates a new property if the property with the same name does not exist.
-        If the property already exists, it updates the existing property.
-
-        Parameters
-        ----------
-        prop : Property # Property object contains name and IfcValue
-            The property (containing name and IfcValue) to add.
-
-        Returns
-        -------
-        IfcProperty
-            The added or updated property.
-        """
-        return self._adapter.add_property(self.ifc_id, prop)
-
-    def remove_property(self, prop_name: str) -> bool:
-        """
-        Removes a property from the property set.
-
-        If the property with the given name does not exist, it does nothing.
+        Gets a property within this specific property set by its name.
 
         Parameters
         ----------
         prop_name : str
-            The name of the property to remove.
+            The name of the property to retrieve from this PSet.
+
+        Returns
+        -------
+        IfcProperty | None
+            The IfcProperty model object if found within this PSet, otherwise None.
         """
-        return self._adapter.remove_property(self.ifc_id, prop_name)
+        # Iterate over properties already retrieved via the adapter's get_properties
+        # This avoids an extra adapter call if properties are already cached/fetched.
+        for prop in self.properties:
+            if prop.name == prop_name:
+                return prop
+        logger.debug(f"Property '{prop_name}' not found in cached properties for {self}")
+        # Optional: Could add a direct adapter call here as a fallback,
+        # but usually relying on self.properties is sufficient.
+        # return self._adapter.get_property_by_name(self.ifc_id, prop_name) # If adapter had this method
+        return None
+
+    def add_property(self, prop: "Property") -> "IfcProperty | None":
+        """
+        Adds a new property directly to this specific IfcPropertySet instance.
+
+        Parameters
+        ----------
+        prop : Property
+            The Property data object defining the property to add to this PSet.
+
+        Returns
+        -------
+        IfcProperty | None
+            The newly created IfcProperty model object, or None if the operation failed
+            (e.g., property name conflict within this PSet).
+        """
+        logger.debug(f"Requesting adapter to add property '{prop.name}' to {self}")
+        # Type hint for adapter is IPSetAdapter, which has the method
+        return self._adapter.add_property_to_pset(self.ifc_id, prop)
+
+    def remove_property(self, prop_name: str) -> bool:
+        """
+        Removes a property (by name) directly from this specific IfcPropertySet instance.
+
+        Parameters
+        ----------
+        prop_name : str
+            The name of the property to remove from this PSet.
+
+        Returns
+        -------
+        bool
+            True if the property was found and removed from this PSet, False otherwise.
+        """
+        logger.debug(f"Requesting adapter to remove property '{prop_name}' from {self}")
+        return self._adapter.remove_property_from_pset(self.ifc_id, prop_name)
+
+
+class IPSetDefinition(Protocol):
+    name: str
+    properties: list[Property]
 
 
 @dataclass
-class PropertySet:
+class PropertySet(IPSetDefinition):
     name: str
-    properties: list[Property]
+    properties: List[Property]
+
+    def __post_init__(self):
+        validate_pset_definition(self)
+
+
+@dataclass
+class QuantitySet(IPSetDefinition):
+    name: str
+    properties: List[Property]
+
+    def __post_init__(self):
+        validate_pset_definition(self)

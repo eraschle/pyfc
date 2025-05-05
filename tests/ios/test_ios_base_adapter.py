@@ -1,13 +1,12 @@
 # tests/ios/test_ios_base_adapter.py
 import pytest
-
 from pyfc.errors import IfcAdapterError
 from pyfc.ios import IosObjectAdapter  # Use ObjectAdapter to test base methods
 from pyfc.ios.context import IosModelContext
 from pyfc.models import IfcObject
+from tests.conftest import debug_context_state
 
-from . import debug_context_state
-from .conftest import (
+from tests.conftest import (
     KNOWN_ELEMENT_GUID,
     KNOWN_ELEMENT_ID,
     KNOWN_ELEMENT_NAME,
@@ -19,9 +18,7 @@ from .conftest import (
 
 # --- Tests for Base Adapter Functionality (tested via IosObjectAdapter) ---
 class TestIosBaseAdapter:
-    def test_get_by_id_exists(
-        self, object_adapter: IosObjectAdapter, ifc_context: IosModelContext
-    ):
+    def test_get_by_id_exists(self, object_adapter: IosObjectAdapter, ifc_context: IosModelContext):
         debug_context_state(ifc_context, "test_get_by_id_exists")
         try:
             element = object_adapter.get_by_id(KNOWN_ELEMENT_ID)
@@ -59,9 +56,7 @@ class TestIosBaseAdapter:
         assert value is not None
         assert value == expected_value
 
-    def test_get_attribute_non_existent_attribute(
-        self, object_adapter: IosObjectAdapter
-    ):
+    def test_get_attribute_non_existent_attribute(self, object_adapter: IosObjectAdapter):
         # Assuming 'NonExistentAttribute' does not exist
         value = object_adapter.get_attribute(KNOWN_ELEMENT_ID, "NonExistentAttribute")
         assert value is None  # Should log a warning but return None

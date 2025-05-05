@@ -1,17 +1,27 @@
+# -*- coding: utf-8 -*-
 import logging
 from typing import TYPE_CHECKING, Any
 
 from pyfc.errors import IfcAdapterError
 
 # Import value_factory from models
-from pyfc.models import IfcPrefix, IfcUnitType, IfcValue, IfcValueType, value_factory
+from pyfc.models import (
+    IfcPrefix,
+    IfcUnitType,
+    IfcValue,
+    IfcValueType,
+    ValueFactory,
+)
 
 # Import IfcEntityType
 from pyfc.models.ifc_types import IfcEntityType
 from pyfc.utils import convert
 
+# Import utilities
+from . import utilities as ifc_utils
+
 if TYPE_CHECKING:
-    from .context import IosModelContext  # Use type checking import
+    from .context import IosModelContext
 
 logger = logging.getLogger(__name__)
 
@@ -62,31 +72,25 @@ class IosValueUnitHandler:
                 if converted_value is None:
                     raise ValueError(f"Could not convert '{value}' to Boolean/Logical.")
                 # Use IfcLogical as the target type for boolean-like values in properties/measures
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.LOGICAL.value
             elif value_type == IfcValueType.INTEGER:
                 converted_value = convert.as_int(value)
                 if converted_value is None:
                     raise ValueError(f"Could not convert '{value}' to Integer.")
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.INTEGER.value
             elif value_type == IfcValueType.REAL:
                 converted_value = convert.as_float(value)
                 if converted_value is None:
                     raise ValueError(f"Could not convert '{value}' to Float/Real.")
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.REAL.value
             elif value_type == IfcValueType.TEXT:
                 converted_value = str(value)
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.TEXT.value
             elif value_type == IfcValueType.LABEL:
                 converted_value = str(value)
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.LABEL.value
             elif value_type == IfcValueType.IDENTIFIER:
                 converted_value = str(value)
-                # Use IfcEntityType for the string value
                 ifc_type_str = IfcEntityType.IDENTIFIER.value
             # Add other type conversions if needed (e.g., dates, times)
             else:
@@ -171,21 +175,20 @@ class IosValueUnitHandler:
         project_units = []
         project = None
         try:
-            # Use IfcEntityType
             project_list = self.context.ifc_by_type(IfcEntityType.PROJECT)
             if not project_list:
                 logger.error("Could not find IfcProject to search for units.")
             else:
                 project = project_list[0]
-                if hasattr(project, "UnitsInContext") and project.UnitsInContext:
+                if ifc_utils.has_attribute_value(project, "UnitsInContext"):
                     units_in_context = project.UnitsInContext
-                    project_units = list(units_in_context.Units or [])  # Ensure list
+                    project_units = ifc_utils.ensure_list(getattr(units_in_context, "Units", None))
                     for unit in project_units:
-                        # Check IfcSIUnit using IfcEntityType
+                        # Use utility functions
                         if (
                             is_si
-                            and unit.is_a(IfcEntityType.SI_UNIT)
-                            and hasattr(unit, "UnitType")
+                            and ifc_utils.is_si_unit(unit)
+                            and ifc_utils.has_attribute(unit, "UnitType")
                             and unit.UnitType == ifc_unit_enum
                         ):
                             current_prefix_val = getattr(unit, "Prefix", None)
@@ -227,7 +230,6 @@ class IosValueUnitHandler:
                     create_args["Prefix"] = ifc_prefix_enum_str
 
             try:
-                # Use IfcEntityType
                 new_unit = self.context.create_entity(IfcEntityType.SI_UNIT, **create_args)
                 logger.debug(f"Created new IfcSIUnit: #{new_unit.id()}")
             except Exception as e:
@@ -245,7 +247,6 @@ class IosValueUnitHandler:
             if project and not units_in_context:
                 logger.info("Creating new IfcUnitAssignment for project.")
                 try:
-                    # Use IfcEntityType
                     units_in_context = self.context.create_entity(
                         IfcEntityType.UNIT_ASSIGNMENT, Units=[]
                     )
@@ -258,7 +259,7 @@ class IosValueUnitHandler:
 
             if units_in_context:
                 project_units.append(new_unit)
-                units_in_context.Units = tuple(project_units)
+                units_in_context.Units = ifc_utils.ensure_tuple(project_units)
                 logger.debug(f"Added new unit #{new_unit.id()} to project UnitsInContext")
                 self.context.mark_modified()
             else:
@@ -298,59 +299,59 @@ class IosValueUnitHandler:
             unit_entity: Any = None
 
             # --- Extract Raw Value and Infer Value Type ---
-            # Use IfcEntityType for checks
-            if entity.is_a(IfcEntityType.PROPERTY_SINGLE_VALUE):
-                if hasattr(entity, "NominalValue") and entity.NominalValue:
+            # Use utility functions
+            if ifc_utils.is_single_value_property(entity):
+                if ifc_utils.has_attribute_value(entity, "NominalValue"):
                     nominal_value = entity.NominalValue
                     raw_value = nominal_value.wrappedValue
                     ifc_type_name = nominal_value.is_a()
                     # Map IFC type string to IfcValueType enum using the updated _missing_ logic
                     value_type = IfcValueType(ifc_type_name)
 
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
 
-            # --- Handle IfcQuantity subclasses using IfcEntityType ---
-            elif entity.is_a(IfcEntityType.QUANTITY_LENGTH):
-                if hasattr(entity, "LengthValue"):
+            # --- Handle IfcQuantity subclasses using utility functions ---
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_LENGTH):
+                if ifc_utils.has_attribute(entity, "LengthValue"):
                     raw_value = entity.LengthValue
                 value_type = IfcValueType.REAL
                 unit_type = IfcUnitType.LENGTH
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
-            elif entity.is_a(IfcEntityType.QUANTITY_AREA):
-                if hasattr(entity, "AreaValue"):
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_AREA):
+                if ifc_utils.has_attribute(entity, "AreaValue"):
                     raw_value = entity.AreaValue
                 value_type = IfcValueType.REAL
                 unit_type = IfcUnitType.AREA
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
-            elif entity.is_a(IfcEntityType.QUANTITY_VOLUME):
-                if hasattr(entity, "VolumeValue"):
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_VOLUME):
+                if ifc_utils.has_attribute(entity, "VolumeValue"):
                     raw_value = entity.VolumeValue
                 value_type = IfcValueType.REAL
                 unit_type = IfcUnitType.VOLUME
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
-            elif entity.is_a(IfcEntityType.QUANTITY_WEIGHT):  # Maps to MASS
-                if hasattr(entity, "WeightValue"):
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_WEIGHT):  # Maps to MASS
+                if ifc_utils.has_attribute(entity, "WeightValue"):
                     raw_value = entity.WeightValue
                 value_type = IfcValueType.REAL
                 unit_type = IfcUnitType.MASS
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
-            elif entity.is_a(IfcEntityType.QUANTITY_COUNT):
-                if hasattr(entity, "CountValue"):
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_COUNT):
+                if ifc_utils.has_attribute(entity, "CountValue"):
                     raw_value = entity.CountValue
                 # CountValue can be IfcInteger or IfcReal according to schema
                 value_type = IfcValueType.from_python_type(raw_value)  # Infer from actual value
                 unit_type = IfcUnitType.COUNT
-            elif entity.is_a(IfcEntityType.QUANTITY_TIME):
-                if hasattr(entity, "TimeValue"):
+            elif ifc_utils.is_entity_type(entity, IfcEntityType.QUANTITY_TIME):
+                if ifc_utils.has_attribute(entity, "TimeValue"):
                     raw_value = entity.TimeValue
-                value_type = IfcValueType.REAL  # IfcTimeMeasure is Real
+                value_type = IfcValueType.REAL
                 unit_type = IfcUnitType.TIME
-                if hasattr(entity, "Unit"):
+                if ifc_utils.has_attribute(entity, "Unit"):
                     unit_entity = entity.Unit
             # Add other quantity types if needed
 
@@ -364,8 +365,8 @@ class IosValueUnitHandler:
 
             # --- Determine Unit Type and Prefix from Unit Entity ---
             if unit_entity:
-                # Use IfcEntityType for checks
-                if unit_entity.is_a(IfcEntityType.SI_UNIT):
+                # Use utility functions
+                if ifc_utils.is_si_unit(unit_entity):
                     si_unit_type_enum = getattr(unit_entity, "UnitType", None)
                     si_prefix_enum = getattr(unit_entity, "Prefix", None)
                     si_name = getattr(unit_entity, "Name", None)
@@ -391,8 +392,7 @@ class IosValueUnitHandler:
                         # Use constructor which handles None, "", or valid string via _missing_
                         prefix = IfcPrefix(si_prefix_enum)
 
-                # Use IfcEntityType for checks
-                elif unit_entity.is_a(IfcEntityType.CONVERSION_BASED_UNIT):
+                elif ifc_utils.is_entity_type(unit_entity, IfcEntityType.CONVERSION_BASED_UNIT):
                     logger.debug(
                         f"Property {entity_id} uses IfcConversionBasedUnit #{unit_entity.id()}. "
                         "Unit/Prefix extraction not fully implemented."
@@ -407,13 +407,12 @@ class IosValueUnitHandler:
                         unit_type = inferred_unit_type
                     # Prefix is generally NONE for these unless explicitly modeled differently.
 
-                # Use IfcEntityType for checks
-                elif unit_entity.is_a(IfcEntityType.DERIVED_UNIT):
+                elif ifc_utils.is_entity_type(unit_entity, IfcEntityType.DERIVED_UNIT):
                     logger.debug(
                         f"Property {entity_id} uses IfcDerivedUnit #{unit_entity.id()}. "
                         "Unit/Prefix extraction not fully implemented."
                     )
-                elif unit_entity.is_a(IfcEntityType.CONTEXT_DEPENDENT_UNIT):
+                elif ifc_utils.is_entity_type(unit_entity, IfcEntityType.CONTEXT_DEPENDENT_UNIT):
                     logger.debug(
                         f"Property {entity_id} uses IfcContextDependentUnit #{unit_entity.id()}. "
                         "Unit/Prefix extraction not implemented."
@@ -428,12 +427,8 @@ class IosValueUnitHandler:
             if raw_value is not None and value_type is not None:
                 try:
                     # Use the factory to ensure consistency and validation
-                    # Pass the resolved enums
-                    return value_factory.create(
-                        value=raw_value,
-                        value_type=value_type,  # Pass the resolved IfcValueType enum
-                        unit_type=unit_type,  # Pass the resolved IfcUnitType enum
-                        prefix=prefix,  # Pass the resolved IfcPrefix enum
+                    return ValueFactory.create(
+                        value=raw_value, value_type=value_type, unit_type=unit_type, prefix=prefix
                     )
                 except (ValueError, TypeError) as e:
                     logger.error(

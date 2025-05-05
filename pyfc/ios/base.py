@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import abc
 import logging
 from typing import TYPE_CHECKING, Any
@@ -5,6 +6,9 @@ from typing import TYPE_CHECKING, Any
 from pyfc.adapters import IBaseAdapter
 from pyfc.errors import IfcAdapterError
 from pyfc.models import ABaseModel
+
+# Import utilities
+from . import utilities as ifc_utils
 
 if TYPE_CHECKING:
     from pyfc.ios.context import IosModelContext
@@ -50,7 +54,8 @@ class IosBaseAdapter[T: ABaseModel](IBaseAdapter[T]):
             if not entity:
                 raise IfcAdapterError(f"Entity with ID {entity_id} not found")
 
-            if not hasattr(entity, name):
+            # Entity is guaranteed non-None by context.ifc_by_id check before this call
+            if not ifc_utils.has_attribute(entity, name):
                 return None
             return getattr(entity, name)
         except Exception as e:
@@ -63,7 +68,8 @@ class IosBaseAdapter[T: ABaseModel](IBaseAdapter[T]):
         if not entity:
             raise IfcAdapterError(f"Entity with ID {entity_id} not found")
         try:
-            if hasattr(entity, name):
+            # Entity is guaranteed non-None by context.ifc_by_id check before this call
+            if ifc_utils.has_attribute(entity, name):
                 setattr(entity, name, value)
                 return self.context.mark_modified()
             return False

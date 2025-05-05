@@ -2,7 +2,7 @@
 from pyfc.ios import IosObjectTypeAdapter
 from pyfc.models import IfcObject, IfcObjectType
 
-from .conftest import (
+from tests.conftest import (
     KNOWN_ELEMENT_ID,
     KNOWN_TYPE_GUID,
     KNOWN_TYPE_ID,
